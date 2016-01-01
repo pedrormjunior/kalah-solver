@@ -2,13 +2,14 @@ import numpy as np
 import itertools as it
 import copy
 import operator as op
+import time
 
 
 class kalah:
-    def __init__(self):
+    def __init__(self, initialplayer=0):
         self.board = np.zeros((2, 8)).astype(int)
         self.board[:, 1:7] = 4
-        self.player = 0
+        self.player = initialplayer
         assert self.board.sum() == 4*12
 
     def __repr__(self):
@@ -25,7 +26,7 @@ class kalah:
         return ret
 
     @staticmethod
-    def plays(start, quant):
+    def moves(start, quant):
         player, square = start
         assert 0 <= player <= 1
         assert 1 <= square <= 6
@@ -45,11 +46,12 @@ class kalah:
     def play(self, square):
         assert 0 <= self.player <= 1
         assert 1 <= square <= 6
+        if self.endofgame(): return None
         assert not self.endofgame()
 
         quant = self.board[self.player, square]
         if quant == 0: return False
-        squaresinc = kalah.plays((self.player, square), quant)
+        squaresinc = kalah.moves((self.player, square), quant)
         assert len(squaresinc) == quant
 
         self.board[self.player, square] = 0
@@ -63,7 +65,7 @@ class kalah:
             self.board[mykalah] += self.board[otherplayersquare]
             self.board[otherplayersquare] = 0
 
-        self.player += lastsquare not in [(0, 0), (1, 7)]
+        self.player += (lastsquare not in [(0, 0), (1, 7)] or self.endofgame())
         self.player %= 2
 
         if self.endofgame():
@@ -85,7 +87,7 @@ class kalah:
             copykalahinstance = copy.deepcopy(kalahinstance)
             ret = copykalahinstance.play(square)
             if ret:
-                if copykalahinstance.player == kalahinstance.player:
+                if copykalahinstance.player == kalahinstance.player and not copykalahinstance.endofgame():
                     return map(lambda (s, game): ([square] + s, game), g(copykalahinstance))
                 else:
                     return [([square], copykalahinstance)]
@@ -93,36 +95,42 @@ class kalah:
 
         return g(self)
 
-    def iametric(self):
-        return self.board[0, 0] - self.board[1, 7]
-
     def bestplay(self, level=0):
-        def bestplaylevels(level, kalahinstance):
+        starttime = time.time()
+        def bestplaytail(level, kalahinstance):
             assert level >= 0
-            assert kalahinstance.player == 0
+
+            if kalahinstance.endofgame(): return (None, None)
 
             possible = kalahinstance.possibleplays()
-            if level == 0:
-                return max(possible, key=lambda (path, game): game.iametric())
-            else:
-                possibleother = map(lambda (path, game):
-                                    map(lambda (pathother, gameother): (path, gameother),
-                                        game.possibleplays()),
-                                    possible)
-                possibleother = map(lambda lst:
-                                    map(lambda (path, game): (path, bestplaylevels(level-1, game)[1]),
-                                        lst),
-                                    possibleother)
-                possibleother = map(lambda lst:
-                                    min(lst, key=lambda (path, game): game.iametric()),
-                                    possibleother)
-                return max(possibleother, key=lambda (path, game): game.iametric())
+            assert len(possible) > 0
+            assert all(kalahinstance.player != game[1].player for game in possible), \
+                (kalahinstance.player, [game[1].player for game in possible], kalahinstance, possible)
 
-        return bestplaylevels(level, self)
+            def iametric(game):
+                assert isinstance(game, kalah)
+                return game.board[0, 0] - game.board[1, 7] \
+                    if kalahinstance.player == 0 else \
+                    game.board[1, 7] - game.board[0, 0]
+
+            if level == 0:
+                return max(possible, key=lambda (path, game): iametric(game))
+            else:
+                possibleother = map(lambda (path, game): (path, bestplaytail(level-1, game)[1]), possible)
+                possibleother = filter(lambda (path, game): game is not None, possibleother)
+                if len(possibleother) == 0: return max(possible, key=lambda (path, game): iametric(game))
+                else: return max(possibleother, key=lambda (path, game): iametric(game))
+
+        ret = bestplaytail(level, self)
+        endtime = time.time()
+        print 'Time thinking: {} seconds'.format(endtime - starttime)
+        return ret
 
 class kalahgame:
-    def __init__(self):
-        self.kalah = kalah()
+    def __init__(self, initialplayer=0, iaplayer=0, ialevel=2):
+        self.kalah = kalah(initialplayer)
+        self.iaplayer = iaplayer
+        self.ialevel = ialevel
 
     def interactive(self):
         while not self.kalah.endofgame():
@@ -130,7 +138,7 @@ class kalahgame:
             square = 0
             while not 1 <= square <= 6:
                 try:
-                    square = int(raw_input('({}) Insert the square to play: '.format(self.kalah.player+1)))
+                    square = int(raw_input('Player {}. Insert the square to play: '.format(self.kalah.player)))
                 except EOFError:
                     return
                 except:
@@ -141,31 +149,30 @@ class kalahgame:
     def iainteractive(self):
         while not self.kalah.endofgame():
             print self.kalah
-            if self.kalah.player == 0:
-                path, finalstate = self.kalah.bestplay(1)
-                print '({}) Insert the square to play: {}'.format(self.kalah.player+1, ', '.join(map(str, path)))
+            printlinetext = 'Player {}. Insert the square to play:'.format(self.kalah.player)
+
+            if self.kalah.player == self.iaplayer:
+                path, finalstate = self.kalah.bestplay(self.ialevel)
+                print printlinetext, path[0]
             else:
                 square = 0
                 while not 1 <= square <= 6:
                     try:
-                        square = int(raw_input('({}) Insert the square to play: '.format(self.kalah.player+1)))
+                        square = int(raw_input(printlinetext + ' '))
                     except EOFError:
                         return
                     except:
                         square = 0
                 path = [square]
+            assert len(path) > 0
 
-            for square in path: self.kalah.play(square)
+            self.kalah.play(path[0])
+            for square in path[1:]:
+                print self.kalah
+                print printlinetext, square
+                self.kalah.play(square)
         print self.kalah
 
-    def possibleplays(self):
-        ret = self.kalah.possibleplays()
-        for s, game in ret:
-            print s
-            print game
-            print game.iametric()
-            print
-        print self.kalah.bestplay(1)
 
-
-aux = kalahgame()
+game = kalahgame(1, 0, 4)
+game.iainteractive()
