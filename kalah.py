@@ -64,6 +64,8 @@ class kalah:
             mykalah = self.player, 7 if self.player else 0
             self.board[mykalah] += self.board[otherplayersquare]
             self.board[otherplayersquare] = 0
+            self.board[mykalah] += self.board[lastsquare] # += 1
+            self.board[lastsquare] = 0
 
         self.player += (lastsquare not in [(0, 0), (1, 7)] or self.endofgame())
         self.player %= 2
