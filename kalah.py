@@ -3,6 +3,7 @@ import itertools as it
 import copy
 import operator as op
 import time
+from forkmap import map as fmap
 
 
 class kalah:
@@ -118,7 +119,7 @@ class kalah:
             if level == 0:
                 return max(possible, key=lambda (path, game): iametric(game))
             else:
-                possibleother = map(lambda (path, game): (path, bestplaytail(level-1, game)[1]), possible)
+                possibleother = fmap(lambda (path, game): (path, bestplaytail(level-1, game)[1]), possible)
                 possibleother = filter(lambda (path, game): game is not None, possibleother)
                 if len(possibleother) == 0: return max(possible, key=lambda (path, game): iametric(game))
                 else: return max(possibleother, key=lambda (path, game): iametric(game))
@@ -176,5 +177,12 @@ class kalahgame:
         print self.kalah
 
 
-game = kalahgame(1, 0, 4)
-game.iainteractive()
+if __name__ == '__main__':
+    initialplayer = None
+    while initialplayer not in [0, 1]:
+        try:
+            initialplayer = int(raw_input('Initial player: '))
+        except:
+            initialplayer = None
+    game = kalahgame(initialplayer, 0, 5)
+    game.iainteractive()
